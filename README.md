@@ -1,51 +1,49 @@
-# Build a Kubernetes cluster using k3s via Ansible.
 
-> This repository is now part of https://github.com/k3s-io/k3s-ansible official repo in contrib/ansible directory.
-> Anyway I'll write updates in order to make PM in k3s.
-> Be my guest and feel free to contribute.
+# K3s Home AI stack playbook
 
-## My blog post about these bunch of playbooks
+## Thanks!
+Many thanks to [itwars](https://github.com/itwars) for the [K3s playbook](https://github.com/itwars/k3s-ansible), from which this repo was forked
 
-Here is my post about [k3s and Ansible provisionning](https://www.it-wars.com/posts/cloud-native/kubernetes-avec-k3s-pour-sauver-la-planete/) (in French)
+## What does it do
+The playbook has been only tested on Ubuntu amd64 and arm64.
+The playbook assumes you have an NFS, ELK servers and local docker registry.
+It will attempt to provision the K3s nodes, NVidia drivers, self-signed cert issuer and the apps listed below.
+Exclude what you don't need in [site.yml](https://github.com/branep/k3s-ai-stack-ansible/blob/main/site.yml)
 
-## K3s Ansible Playbook
+```yaml
+roles:
+    - role: apps/node-feature-discovery
+    - role: apps/whisper-asr
+    - role: apps/ollama
+    - role: apps/mimic3
+    - role: apps/fasttext
+    - role: apps/open-webui
+    - role: apps/rancher
+    - role: apps/filebeat
+```
 
-Build a Kubernetes cluster using Ansible with k3s. The goal is easily install a Kubernetes cluster on machines running:
+I have not found Mimic3 images available in public registries, hence the local registry addition.
 
-- [X] Debian 9
-- [ ] Ubuntu 16.04
-- [ ] CentOS 7
-
-on processor architecture:
-
-- [X] x64
-- [X] arm64
-- [X] armhf
-
-## System requirements:
-
-Deployment environment must have Ansible 2.4.0+
-Master and nodes must have passwordless SSH access
 
 ## Usage
+Remove unneeded roles from [the playbook](https://github.com/branep/k3s-ai-stack-ansible/blob/main/site.yml)
 
-Add the system information gathered above into a file called hosts.ini. For example:
+Edit [all.yml](https://github.com/branep/k3s-ai-stack-ansible/blob/main/inventory/example/group_vars/all.yml) and replace with your local network values.
 
-```
-[master]
-192.16.35.12
+Update the [inventory](https://github.com/branep/k3s-ai-stack-ansible/blob/main/inventory/example/hosts.ini) with your nodes.
 
-[node]
-192.16.35.[10:11]
-
-[kube_cluster:children]
-master
-node
+Setup the virtual environment in the path of the repo:
+```bash
+python -m venv ./
+source ./bin/activate
+pip install -r requirements.txt
 ```
 
-Start provisioning of the cluster using the following command:
+Make sure to use ansible-vault for your secret values.
 
+Run the playbook example:
+```bash
+./bin/ansible-playbook site.yml -i inventory/example/hosts.ini \
+    --ask-pass --ask-become-pass  --ask-vault-pass \
+    -e "reboot=true do_bootstrap=true"
 ```
-ansible-playbook site.yml
-```
-

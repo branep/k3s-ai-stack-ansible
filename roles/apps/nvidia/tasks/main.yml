@@ -1,0 +1,50 @@
+- name: Deploy Nvidia Pod
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'gpu-pod.yml') | from_yaml_all }}"
+
+- name: Add nvidia repository
+  kubernetes.core.helm_repository:
+    name: nvidia
+    repo_url: https://helm.ngc.nvidia.com/nvidia
+
+- name: Deploy nvidia gpu-operator helm chart
+  kubernetes.core.helm:
+    name: nvidia
+    chart_ref: nvidia/gpu-operator
+    release_namespace: nvidia
+    values:
+      toolkit:
+        env:
+          - name: CONTAINERD_CONFIG
+            value: /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+          - name: CONTAINERD_SOCKET
+            value: /run/k3s/containerd/containerd.sock
+          - name: CONTAINERD_SET_AS_DEFAULT
+            value: "true"
+          - name: CONTAINERD_RUNTIME_CLASS
+            value: nvidia
+          - name: NVIDIA_VISIBLE_DEVICES
+            value: all
+          - name: NVIDIA_DRIVER_CAPABILITIES
+            value: all
+
+- name: Deploy Nvidia Timeslicing
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'time-slicing.yml') | from_yaml_all }}"
+
+#   kubectl patch clusterpolicy/cluster-policy -n nvidia --type merge -p '{"spec": {"devicePlugin": {"config": {"name": "time-slicing-config-all", "default": "any"}}}}'
+- name: Apply nvidia policy patch
+  ignore_errors: true
+  kubernetes.core.k8s_json_patch:
+    kind: ClusterPolicy
+    namespace: nvidia
+    name: cluster-policy
+    patch:
+      - op: merge
+        path: /spec/devicePlugin
+        value:
+          config:
+            name: time-slicing-config-all
+            default: any

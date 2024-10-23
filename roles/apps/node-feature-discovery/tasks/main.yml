@@ -1,0 +1,11 @@
+- name: Add node-feature-discovery repository
+  kubernetes.core.helm_repository:
+    name: node-feature-discovery
+    repo_url: https://kubernetes-sigs.github.io/node-feature-discovery/charts
+
+- name: Deploy node-feature-discovery helm chart
+  kubernetes.core.helm:
+    name: node-feature-discovery
+    chart_ref: node-feature-discovery/node-feature-discovery
+    release_namespace: node-feature-discovery
+    create_namespace: true

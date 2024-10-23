@@ -1,0 +1,4 @@
+- name: Deploy Filebeat
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'deploy.yaml.j2') | from_yaml_all }}"

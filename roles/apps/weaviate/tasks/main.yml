@@ -1,0 +1,16 @@
+- name: Add weaviate repository
+  kubernetes.core.helm_repository:
+    name: weaviate
+    repo_url: https://weaviate.github.io/weaviate-helm
+
+- name: Deploy weaviate helm chart
+  kubernetes.core.helm:
+    name: weaviate
+    chart_ref: weaviate/weaviate
+    release_namespace: weaviate
+    create_namespace: true
+
+- name: weaviate ingress
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'weaviate-ingress.yml.j2') | from_yaml_all }}"
+  with_items: "{{ services }}"

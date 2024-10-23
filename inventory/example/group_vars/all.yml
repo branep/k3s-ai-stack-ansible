@@ -1,0 +1,90 @@
+---
+k3s_version: v1.31.1+k3s1
+db:
+  name: k3s
+  host: 10.0.128.100
+  port: 3306
+  user: k3sadmin
+  password:
+ansible_user: ubuntu # default install user will have k3s access
+systemd_dir: /etc/systemd/system
+master_ip: "{{ hostvars[groups['master'][0]]['ansible_host'] | default(groups['master'][0]) }}"
+extra_server_args: ""
+# extra_server_args: '--datastore-endpoint "mysql://{{ db.user }}:{{ db.password }}@tcp({{ db.host }}:{{ db.port }})/{{ db.name }}"'
+extra_agent_args: ""
+network_nameserver: "10.0.128.1"
+logstash_url: "10.0.128.100:50000"
+ssh_port: 22855 # change node ssh port
+local_domain: "lan"
+local_registry: "registry.{{ local_domain }}"
+user_name: user # your user
+user_pass: password hash
+authorized_keys: |
+  your keys
+pihole:
+  service:
+    name: pihole
+    password:
+nfs_server_ip: "10.0.128.100"
+nfs_root_path: "/export"
+whisper_asr:
+  service:
+    {
+      "name": "whisper",
+      "image": "onerahmet/openai-whisper-asr-webservice:v1.5.0-gpu",
+      "model": "medium",
+    }
+  mounts:
+    {
+      "cache":
+        {
+          "whisper":
+            {
+              "local": "/root/.cache/whisper",
+              "remote": "config/whisper-asr-webservice/cache-whisper",
+            },
+        },
+    }
+ollama:
+  services:
+    - { "name": "ollama", "port": 11434 }
+mimic3:
+  service:
+    {
+      "name": "mimic3",
+      "port": 59125,
+      "image": "{{ local_registry }}/mimic3-cuda:latest",
+    }
+  mounts:
+    {
+      "certs": { "local": "/etc/ssl/certs", "remote": "/etc/ssl/certs" },
+      "data": { "local": "/data", "remote": "config/mimic3/data" },
+    }
+fasttext:
+  service: { name: "fasttext", port: 8000 }
+  mounts:
+    { "model": { "local": "/app/model", "remote": "config/fasttext/model" } }
+webchat:
+  service:
+    {
+      name: "webchat",
+      ollama_urls: ["http://ollama.{{ local_domain }}"],
+      replicaCount: 1,
+    }
+weaviate:
+  services:
+    - { "name": "weaviate", "port": 8080 }
+filebeat:
+  elasticsearch:
+    host: nas.lan
+    port: 9200
+    username: elastic
+    password: changeme
+    cloud_id: ""
+    cloud_auth: ""
+cert_manager:
+  service:
+    name: cert-manager
+    version: v1.16.1
+rancher:
+  service: { "name": "rancher", "cert_manager_crd_version": "v1.16.1" }

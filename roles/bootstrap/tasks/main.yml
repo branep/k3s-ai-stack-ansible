@@ -1,0 +1,220 @@
+- name: Wait for /var/lib/dpkg/lock-frontend to be released
+  shell: while lsof /var/lib/dpkg/lock-frontend ; do sleep 10; done;
+
+- name: Remove apt lock file
+  file:
+    state: absent
+    path: "{{ item }}"
+  with_items:
+    - "/var/lib/dpkg/lock-frontend"
+    - "/var/lib/apt/lists/lock"
+
+- name: disable resolved
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: stopped
+    enabled: false
+  ignore_errors: true
+
+- name: resolv.conf adjustment
+  copy:
+    dest: /etc/resolv.conf
+    content: |
+      nameserver {{ network_nameserver }}
+
+- name: Update and upgrade apt packages
+  become: true
+  apt:
+    upgrade: yes
+    update_cache: yes
+  ignore_errors: true
+
+- name: Install Python + more
+  apt:
+    state: present
+    pkg:
+      - python3
+      - python3-pip
+      - nfs-common
+
+- name: Install rsyslog
+  apt:
+    state: present
+    pkg:
+      - rsyslog
+
+- name: Install extra modules
+  apt:
+    pkg:
+      - linux-modules-extra-raspi
+  when: ansible_facts['architecture'] == "aarch64"
+  ignore_errors: true
+
+- name: Install amd64 helm if not exists
+  unarchive:
+    src: https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz
+    dest: /usr/local/bin
+    extra_opts: "--strip-components=1"
+    owner: root
+    group: root
+    mode: 0755
+    remote_src: true
+  args:
+    creates: /usr/local/bin/helm
+  when: ansible_facts['architecture'] == "x86_64"
+
+- name: Install aarch64 helm if not exists
+  unarchive:
+    src: https://get.helm.sh/helm-v3.16.2-linux-arm64.tar.gz
+    dest: /usr/local/bin
+    extra_opts: "--strip-components=1"
+    owner: root
+    group: root
+    mode: 0755
+    remote_src: true
+  args:
+    creates: /usr/local/bin/helm
+  when: ansible_facts['architecture'] == "aarch64"
+
+- name: Add my user
+  user: >
+    name={{ user_name }}
+    password={{ user_pass }}
+    shell=/bin/bash
+    groups=sudo
+    append=yes
+    generate_ssh_key=yes
+    ssh_key_bits=2048
+    state=present
+
+- name: Create directory .ssh
+  file:
+    path: /home/{{ user_name }}/.ssh
+    state: directory
+    owner: "{{ user_name }}"
+    mode: "0700"
+    group: "{{ user_name }}"
+
+- name: Add public SSH keys
+  when: authorized_keys is defined
+  copy:
+    content: |
+      {{ authorized_keys }}
+    dest: /home/{{ user_name }}/.ssh/authorized_keys
+    mode: "0600"
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+
+- name: Allow the user to run any commands as alice with sudo -u alice
+  community.general.sudoers:
+    name: "{{ user_name }}_as_root}}"
+    state: present
+    user: "{{ user_name }}"
+    runas: root
+    commands: ALL
+
+- name: Add my workstation user's public key to the new user
+  authorized_key:
+    user: "{{ user_name }}"
+    key: "{{ lookup('file', '/home/{{ user_name }}/.ssh/id_rsa.pub') }}"
+    state: present
+  notify: restart ssh
+
+- name: Change SSH port on older
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^Port"
+    line: "Port {{ ssh_port }}"
+    state: present
+  notify: restart ssh
+  when: ansible_distribution_version is version('23.10', '<')
+
+- name: Change SSH port on newer
+  copy:
+    dest: /etc/systemd/system/ssh.socket.d/override.conf
+    content: |
+      ListenStram=
+      ListenStream={{ ssh_port }}
+      state: present
+  notify: restart ssh
+  when: ansible_distribution_version is version('23.10', '>=')
+
+- name: Remove root SSH access
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^PermitRootLogin"
+    line: "PermitRootLogin no"
+    state: present
+  notify: restart ssh
+
+- name: Remove password SSH access
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^PasswordAuthentication"
+    line: "PasswordAuthentication no"
+    state: present
+  notify: restart ssh
+
+- name: Log json format
+  copy:
+    dest: /etc/rsyslog.d/01-json-template.conf
+    content: |
+      template(name="json-template"
+        type="list") {
+          constant(value="{")
+            constant(value="\"@timestamp\":\"")     property(name="timereported" dateFormat="rfc3339")
+            constant(value="\",\"@version\":\"1")
+            constant(value="\",\"message\":\"")     property(name="msg" format="json")
+            constant(value="\",\"sysloghost\":\"")  property(name="hostname")
+            constant(value="\",\"severity\":\"")    property(name="syslogseverity-text")
+            constant(value="\",\"facility\":\"")    property(name="syslogfacility-text")
+            constant(value="\",\"programname\":\"") property(name="programname")
+            constant(value="\",\"procid\":\"")      property(name="procid")
+          constant(value="\"}\n")
+      }
+  notify: restart rsyslog
+
+- name: Send logs to central logger
+  lineinfile:
+    dest: /etc/rsyslog.conf
+    line: "*.* @@{{ logstash_url }};json-template"
+  notify: restart rsyslog
+
+- name: install pre-requisites
+  pip:
+    name:
+      - pyyaml
+      - kubernetes
+    extra_args: "--break-system-packages"
+
+- name: 'Populate service facts'
+  ansible.builtin.service_facts:
+
+- name: 'Disable and stop all cloud-init services'
+  ansible.builtin.service:
+    name: "{{ service }}"
+    state: 'stopped'
+    enabled: 'false'
+  loop: "{{ cloud_init_services }}"
+  loop_control:
+    loop_var: service
+  when:
+    - 'not (ansible_distribution == "Ubuntu" and ansible_distribution_version == "14.04")'
+    - 'ansible_facts.services[service] is defined'
+    - 'ansible_facts.services[service].status == "enabled"'
+
+- name: 'Check if /etc/cloud/ exists'
+  ansible.builtin.stat:
+    path: '/etc/cloud/'
+  register: etc_cloud_folder
+
+- name: 'Generate /etc/cloud/cloud-init.disabled'
+  ansible.builtin.copy:
+    dest: '/etc/cloud/cloud-init.disabled'
+    content: 'disabled by ansible\n'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  when:
+    - 'etc_cloud_folder.stat.exists'
+

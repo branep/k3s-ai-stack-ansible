@@ -1,21 +1,72 @@
 ---
-
-- hosts: k3s_cluster
-  gather_facts: yes
+- name: Deploy K3S Cluster
+  hosts: k3s_cluster
   become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Check for deployed NVIDIA support
+      shell:
+        cmd: |
+          [ $(lspci -mm -nn 2>&1 | grep NVIDIA | wc -l) -gt 0 ] && {
+            nvidia-smi || exit 101;
+          } || exit 0
+      args:
+        executable: /bin/bash
+      register: nvidia_driver_install
+      ignore_errors: true
+
   roles:
-    - { role: download }
-    - { role: raspbian }
+    - role: bootstrap
+      when: do_bootstrap is defined
+    - role: prereq
+    - role: download
+    - role: raspberrypi
+    - role: nvidia-driver-install
+      when: nvidia_driver_install.rc == 101
+
+  handlers:
+    - name: restart ssh
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+
+    - name: restart rsyslog
+      ansible.builtin.service:
+        name: rsyslog
+        state: restarted
+
 
 
 - hosts: master
-#  gather_facts: yes
   become: yes
   roles:
-    - { role: k3s/master }
+    - role: k3s/master
 
 - hosts: node
-#  gather_facts: yes
   become: yes
   roles:
-    - { role: k3s/node }
+    - role: k3s/node
+
+- hosts: master
+  become: no
+  gather_facts: no
+  roles:
+    - role: apps/cert-manager
+    - role: apps/node-feature-discovery
+    - role: apps/nvidia
+    - role: apps/whisper-asr
+    - role: apps/ollama
+    - role: apps/mimic3
+    - role: apps/fasttext
+    - role: apps/open-webui
+    - role: apps/rancher
+    - role: apps/filebeat
+
+- hosts: k3s_cluster
+  become: yes
+  gather_facts: no
+  roles:
+    - role: last
+      vars:
+        reboot: false

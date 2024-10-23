@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mimic3
+  labels:
+    name: mimic3
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: mimic3
+  labels:
+    io.kompose.service: mimic3
+  name: mimic3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: mimic3
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      namespace: mimic3
+      labels:
+        io.kompose.service: mimic3
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: "nvidia.com/gpu.present"
+                  operator: In
+                  values:
+                    - "true"
+                - key: "nvidia.com/gpu.memory"
+                  operator: Gt # (greater than)
+                  values: ["3072"]
+
+      containers:
+        - command:
+            - /home/mimic3/app/.venv/bin/python3
+            - -m
+            - mimic3_http
+            - --cuda
+            - --num-threads
+            - "1"
+            - --default-voice
+            - en_US/cmu-arctic_low
+            - --preload-voice
+            - en_US/cmu-arctic_low
+          env:
+            - name: DEBIAN_FRONTEND
+              value: noninteractive
+            - name: HOME
+              value: /data
+            - name: LANG
+              value: C.UTF-8
+            - name: PATH
+              value: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          image: "{{ mimic3.service.image }}"
+          name: mimic3
+          ports:
+            - containerPort: {{ mimic3.service.port }}
+              protocol: TCP
+          volumeMounts:
+            - mountPath: "{{ mimic3.mounts.certs.local }}"
+              name: certs
+              readOnly: true
+            - mountPath: "{{ mimic3.mounts.data.local }}"
+              name: data
+      restartPolicy: Always
+      runtimeClassName: nvidia
+      volumes:
+        - name: certs
+          hostPath:
+            path: "{{ mimic3.mounts.certs.remote }}"
+            type: Directory
+
+        - name: data
+          nfs:
+            server: "{{ nfs_server_ip }}"
+            path: "{{ nfs_root_path }}/{{ mimic3.mounts.data.remote }}"
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: mimic3
+  labels:
+    io.kompose.service: mimic3
+  name: mimic3
+spec:
+  ports:
+    - name: "web"
+      port: {{ mimic3.service.port }}
+      targetPort: {{ mimic3.service.port }}
+  selector:
+    io.kompose.service: mimic3
+---
+
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: {{ mimic3.service.name }}
+  namespace: mimic3
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
+    cert-manager.io/cluster-issuer: selfsigned-issuer
+spec:
+  tls:
+    - hosts:
+        - {{ mimic3.service.name }}.{{ local_domain }}
+      secretName: {{ mimic3.service.name }}-{{ local_domain }}-cert
+  rules:
+    - host: "{{ mimic3.service.name }}.{{ local_domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ mimic3.service.name }}
+                port:
+                  number: {{ mimic3.service.port }}

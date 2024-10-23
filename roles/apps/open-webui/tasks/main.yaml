@@ -1,0 +1,22 @@
+- name: Add open-webui repository
+  kubernetes.core.helm_repository:
+    name: open-webui
+    repo_url: https://helm.openwebui.com/
+
+- name: Deploy open-webui helm chart
+  kubernetes.core.helm:
+    name: open-webui
+    chart_ref: open-webui/open-webui
+    release_namespace: "{{ webchat.service.name }}"
+    create_namespace: true
+    values:
+      nameOverride: "{{ webchat.service.name }}"
+      ollama:
+        enabled: false
+      ollamaUrls: "{{ webchat.service.ollama_urls }}"
+      replicaCount: "{{ webchat.service.replicaCount }}"
+
+- name: open-webui ingress
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'ingress.yaml.j2') | from_yaml_all }}"
+  with_items: "{{ webchat.service }}"

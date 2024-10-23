@@ -1,0 +1,36 @@
+- name: Add ollama repository
+  kubernetes.core.helm_repository:
+    name: ollama
+    repo_url: https://otwld.github.io/ollama-helm/
+
+- name: Deploy ollama helm chart
+  kubernetes.core.helm:
+    name: ollama
+    chart_ref: ollama/ollama
+    release_namespace: ollama
+    create_namespace: true
+    values:
+      runtimeClassName: nvidia
+      extraEnv:
+        - name: OLLAMA_DEBUG
+          value: "0"
+      ollama:
+        gpu:
+          enabled: true
+          type: nvidia
+          number: 1
+        models:
+          - phi3
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: "nvidia.com/gpu.memory"
+                operator: Gt # (greater than)
+                values: ["3072"]
+
+- name: ollama ingress
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'ollama-ingress.yml.j2') | from_yaml_all }}"
+  with_items: "{{ ollama.services }}"

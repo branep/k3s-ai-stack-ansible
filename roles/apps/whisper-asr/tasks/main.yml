@@ -1,0 +1,4 @@
+- name: Deploy Whisper ASR
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'k8s/whisper-asr.yml.j2') | from_yaml_all }}"

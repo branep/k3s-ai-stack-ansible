@@ -1,0 +1,4 @@
+- name: Deploy fasttext
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'deploy.yml.j2') | from_yaml_all }}"

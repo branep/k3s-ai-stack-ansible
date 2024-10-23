@@ -1,0 +1,4 @@
+- name: Deploy Mimic3
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'mimic3-deployment.yaml.j2') | from_yaml_all }}"

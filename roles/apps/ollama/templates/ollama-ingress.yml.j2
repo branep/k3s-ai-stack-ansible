@@ -1,0 +1,24 @@
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: "{{ item.name }}"
+  namespace: ollama
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
+    cert-manager.io/cluster-issuer: selfsigned-issuer
+spec:
+  tls:
+    - hosts:
+        - {{ item.name }}.{{ local_domain }}
+      secretName: {{ item.name }}-{{ local_domain }}-cert
+  rules:
+    - host: "{{ item.name }}.{{ local_domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: "{{ item.name }}"
+                port:
+                  number: {{ item.port }}

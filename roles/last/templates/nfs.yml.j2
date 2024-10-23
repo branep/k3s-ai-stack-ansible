@@ -1,0 +1,15 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: nfs
+  namespace: mediarr
+spec:
+  chart: nfs-subdir-external-provisioner
+  repo: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+  targetNamespace: nfs-provisioner
+  set:
+    nfs.server: {{ item.nfs_ip }}
+    nfs.path: {{ item.nfs_path }}
+    storageClass.name: nfs
+    storageClass.reclaimPolicy: Retain
+

@@ -1,0 +1,24 @@
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: "{{ webchat.service.name }}"
+  namespace: {{ webchat.service.name }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
+    cert-manager.io/cluster-issuer: selfsigned-issuer
+spec:
+  tls:
+    - hosts:
+        - {{ webchat.service.name }}.{{ local_domain }}
+      secretName: {{ webchat.service.name }}-{{ local_domain }}-cert
+  rules:
+    - host: "{{ webchat.service.name }}.{{ local_domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: "{{ webchat.service.name }}"
+                port:
+                  number: 80
