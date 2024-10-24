@@ -5,7 +5,7 @@
 Many thanks to [itwars](https://github.com/itwars) for the [K3s playbook](https://github.com/itwars/k3s-ansible), from which this repo was forked
 
 ## What does it do
-The playbook has been only tested on Ubuntu amd64 and arm64.
+The playbook has been only tested on fresh minimal installs of Ubuntu 20.04~24.04 with amd64 and arm64 architecture.
 The playbook assumes you have an NFS, ELK servers and local docker registry.
 It will attempt to provision the K3s nodes, NVidia drivers, self-signed cert issuer and the apps listed below.
 Exclude what you don't need in [site.yml](https://github.com/branep/k3s-ai-stack-ansible/blob/main/site.yml)
